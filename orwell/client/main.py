@@ -4,10 +4,36 @@ import orwell.messages.controller_pb2 as pb_controller
 import orwell.messages.server_game_pb2 as pb_server_game
 from .broadcast import Broadcast
 import exceptions
+import random
 
+
+class MessageWrapper(object):
+    def __init__(self, message):
+        recipient, message_type, payload = message.split(' ', 3)
+        self._recipient = recipient
+        self._message_type = message_type
+        self._payload = payload
+
+    @property
+    def recipient(self):
+        return self._recipient
+
+    @property
+    def message_type(self):
+        return self._message_type
+
+    @property
+    def payload(self):
+        return self._payload
 
 
 class Toto(object):
+    STATE_INIT = "STATE_INIT"
+    STATE_HELLO_SENT = "STATE_HELLO_SENT"
+    STATE_WELCOME = "STATE_WELCOME"
+    STATE_HELLO_SENT_READY = "STATE_HELLO_SENT_READY"
+    STATE_WAITING_GAME_START = "STATE_WAITING_GAME_START"
+    STATE_GAME_RUNNING = "STATE_GAME_RUNNING"
 
     def __init__(self):
         broadcast = Broadcast()
@@ -20,17 +46,41 @@ class Toto(object):
         self._subscribe_socket = self._context.socket(zmq.SUB)
         self._subscribe_socket.connect(self._subscribe_address)
         self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, "")
-        self._routing_id = "temporary_id_" + str(RANDOM.randint(0, 32768))
+        self._routing_id = "temporary_id_" + str(random.randint(0, 32768))
         self._robot = None
         self._team = None
         self._abort = False
+        self._state = Toto.STATE_INIT
 
     def start(self):
+        assert(Toto.STATE_INIT == self._state)
         hello = self._build_hello(False)
         self._push_socket.send(hello)
-        # this does not work as there could be other messages pending
+        self._state = Toto.STATE_HELLO_SENT
+
+    def process(self):
+        message_wrapper = self._receive()
+        if (message_wrapper is None):
+            return
+        if (Toto.STATE_HELLO_SENT == self._state):
+            if (self._routing_id == message_wrapper.recipient):
+                self._decode_hello_reply(message_wrapper)
+        elif (Toto.STATE_WELCOME == self._state):
+            self._decode_game_state_init(message_wrapper)
+        elif (Toto.STATE_HELLO_SENT_READY == self._state):
+            self._decode_hello_reply_ready(message_wrapper)
+        elif (Toto.STATE_WAITING_GAME_START)
+            self._decode_game_state_start(message_wrapper)
+        elif (Toto.STATE_GAME_RUNNING)
+            self._decode_game_state_running(message_wrapper)
+
+    def _receive(self):
         message = self._subscribe_socket.recv()
-        self._decode_hello_reply(message)
+        if (message):
+            message_wrapper = MessageWrapper(message)
+            if (message_wrapper.recipient in ("all_client", self._routing_id)):
+                return message_wrapper
+        return None
 
     def _build_hello(self, ready):
         pb_message = pb_controller.Hello()
@@ -40,14 +90,23 @@ class Toto(object):
         payload = pb_message.SerializeToString()
         return self._routing_id + ' Hello ' + payload
 
-    def _decode_hello_reply(self, message):
-        recipient, message_type, payload = message.split(' ', 3)
-        if ("Welcome" == message_type):
-            self._handle_welcome(payload)
-        elif ("Goodbye" == message_type):
-            self._handle_goodbye(payload)
+    def _decode_hello_reply(self, message_wrapper):
+        if ("Welcome" == message_wrapper.message_type):
+            self._handle_welcome(message_wrapper.payload)
+        elif ("Goodbye" == message_wrapper.message_type):
+            self._handle_goodbye(message_wrapper.payload)
         else:
-            raise exceptions.NameError("Wrong message type: " + message_type)
+            raise exceptions.NameError(
+                    "Wrong message type: " + message_wrapper.message_type)
+
+    def _decode_hello_reply_ready(self, message_wrapper):
+        if ("Welcome" == message_wrapper.message_type):
+            self._handle_welcome_ready(message_wrapper.payload)
+        elif ("Goodbye" == message_wrapper.message_type):
+            self._handle_goodbye(message_wrapper.payload)
+        else:
+            raise exceptions.NameError(
+                    "Wrong message type: " + message_wrapper.message_type)
 
     def _handle_welcome(self, payload):
         message = pb_server_game.Welcome()
@@ -59,12 +118,56 @@ class Toto(object):
         self._team = message.team
         self._routing_id = str(message.id)
         if (message.game_state):
-            print("playing ? " + str(message.game_state.playing))
-            print("time left: " + str(message.game_state.seconds))
-            self._update_running(message.game_state.playing)
-            for team in message.game_state.teams:
-                print(team.name + " (" + str(team.num_players) +
-                      ") -> " + str(team.score))
+            self._configure(message.game_state)
+        else:
+            self._state = Toto.STATE_WELCOME
+
+    def _handle_welcome_ready(self, payload):
+        message = pb_server_game.Welcome()
+        message.ParseFromString(payload)
+        print("Welcome ; id = " + str(message.id) +
+              " ; robot = '" + message.robot + "'" +
+              " ; team = '" + message.team + "'")
+        if (message.game_state):
+            self._check_start_game(message.game_state)
+        else:
+            self._state = Toto.STATE_WAITING_GAME_START
+
+    def _configure(self, game_state):
+        print("playing ? " + str(message.game_state.playing))
+        print("time left: " + str(message.game_state.seconds))
+        self._update_running(message.game_state.playing)
+        for team in message.game_state.teams:
+            print(team.name + " (" + str(team.num_players) +
+                  ") -> " + str(team.score))
+        # let's assume we configure the different visualisations now
+        self._push_socket.send(self._build_hello(True))
+        self._state = Toto.STATE_HELLO_SENT_READY
+
+    def _check_start_game(self, game_state):
+        if (game_state.playing):
+            self._state = Toto.STATE_GAME_RUNNING
+
+    def _decode_game_state_init(self, message_wrapper):
+        if ("GameState" == message_wrapper.message_type):
+            self._configure(message_wrapper.payload)
+
+    def _decode_game_state_start(self, message_wrapper):
+        if ("GameState" == message_wrapper.message_type):
+            message = pb_server_game.GameState()
+            message.ParseFromString(message_wrapper.payload)
+            self._check_start_game(message)
+
+    def _decode_game_state_running(self, message_wrapper):
+        if ("GameState" == message_wrapper.message_type):
+            message = pb_server_game.GameState()
+            message.ParseFromString(message_wrapper.payload)
+            self._update_visualisations(message)
+
+    def _update_visualisations(self, game_state):
+        print("Updating visualisations")
+        if (not game_state.running):
+            self._state = Toto.STATE_WAITING_GAME_START
 
     def _handle_goodbye(self, payload):
         message = pb_server_game.Goodbye()
@@ -73,4 +176,4 @@ class Toto(object):
         self._abort = True
 
 def main():
-    pass
+    random.seed(None)
