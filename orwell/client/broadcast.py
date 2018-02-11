@@ -1,3 +1,16 @@
+from __future__ import print_function
+import socket
+import struct
+import sys
+
+
+def get_network_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    s.connect(('<broadcast>', 0))
+    return s.getsockname()[0]
+
+
 class Broadcast(object):
     def __init__(self, port=9080, retries=5, timeout=10):
         ip_mask_all = '255'

@@ -1,10 +1,12 @@
+from __future__ import print_function
+import exceptions
+import random
+
 import zmq
 
 import orwell.messages.controller_pb2 as pb_controller
 import orwell.messages.server_game_pb2 as pb_server_game
-from .broadcast import Broadcast
-import exceptions
-import random
+from orwell.client.broadcast import Broadcast
 
 
 class MessageWrapper(object):
@@ -35,11 +37,15 @@ class Toto(object):
     STATE_WAITING_GAME_START = "STATE_WAITING_GAME_START"
     STATE_GAME_RUNNING = "STATE_GAME_RUNNING"
 
-    def __init__(self):
-        broadcast = Broadcast()
-        print(broadcast.push_address + " / " + broadcast.subscribe_address)
-        self._push_address = broadcast.push_address
-        self._subscribe_address = broadcast.subscribe_address
+    def __init__(self, push_address=None, subscribe_address=None):
+        if ((push_address is None) or (subscribe_address is None)):
+            broadcast = Broadcast()
+            print(broadcast.push_address + " / " + broadcast.subscribe_address)
+            self._push_address = broadcast.push_address
+            self._subscribe_address = broadcast.subscribe_address
+        else:
+            self._push_address = push_address
+            self._subscribe_address = subscribe_address
         self._context = zmq.Context.instance()
         self._push_socket = self._context.socket(zmq.PUSH)
         self._push_socket.connect(self._push_address)
@@ -55,6 +61,7 @@ class Toto(object):
     def start(self):
         assert(Toto.STATE_INIT == self._state)
         hello = self._build_hello(False)
+        print("send hello: ", repr(hello))
         self._push_socket.send(hello)
         self._state = Toto.STATE_HELLO_SENT
 
@@ -69,9 +76,9 @@ class Toto(object):
             self._decode_game_state_init(message_wrapper)
         elif (Toto.STATE_HELLO_SENT_READY == self._state):
             self._decode_hello_reply_ready(message_wrapper)
-        elif (Toto.STATE_WAITING_GAME_START)
+        elif (Toto.STATE_WAITING_GAME_START):
             self._decode_game_state_start(message_wrapper)
-        elif (Toto.STATE_GAME_RUNNING)
+        elif (Toto.STATE_GAME_RUNNING):
             self._decode_game_state_running(message_wrapper)
 
     def _receive(self):
@@ -134,10 +141,10 @@ class Toto(object):
             self._state = Toto.STATE_WAITING_GAME_START
 
     def _configure(self, game_state):
-        print("playing ? " + str(message.game_state.playing))
-        print("time left: " + str(message.game_state.seconds))
-        self._update_running(message.game_state.playing)
-        for team in message.game_state.teams:
+        print("playing ? " + str(game_state.playing))
+        print("time left: " + str(game_state.seconds))
+        # self._update_running(game_state.playing)
+        for team in game_state.teams:
             print(team.name + " (" + str(team.num_players) +
                   ") -> " + str(team.score))
         # let's assume we configure the different visualisations now
@@ -177,3 +184,11 @@ class Toto(object):
 
 def main():
     random.seed(None)
+    toto = Toto("tcp://localhost:9001", "tcp://localhost:9000")
+    toto.start()
+    for i in range(10):
+        print("Process " + str(i))
+        toto.process()
+
+if ("__main__" == __name__):
+    main()
