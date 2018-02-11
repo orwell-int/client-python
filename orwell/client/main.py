@@ -11,7 +11,7 @@ from orwell.client.broadcast import Broadcast
 
 class MessageWrapper(object):
     def __init__(self, message):
-        recipient, message_type, payload = message.split(' ', 3)
+        recipient, message_type, payload = message.split(' ', 2)
         self._recipient = recipient
         self._message_type = message_type
         self._payload = payload
@@ -184,7 +184,8 @@ class Toto(object):
 
 def main():
     random.seed(None)
-    toto = Toto("tcp://localhost:9001", "tcp://localhost:9000")
+    #toto = Toto("tcp://localhost:9001", "tcp://localhost:9000")
+    toto = Toto()
     toto.start()
     for i in range(10):
         print("Process " + str(i))
