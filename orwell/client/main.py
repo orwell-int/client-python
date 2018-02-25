@@ -7,6 +7,7 @@ import zmq
 import orwell.messages.controller_pb2 as pb_controller
 import orwell.messages.server_game_pb2 as pb_server_game
 from orwell.client.broadcast import Broadcast
+from orwell.client.joystick import Joystick
 
 
 class MessageWrapper(object):
@@ -103,8 +104,9 @@ class Toto(object):
         elif ("Goodbye" == message_wrapper.message_type):
             self._handle_goodbye(message_wrapper.payload)
         else:
-            raise exceptions.NameError(
-                    "Wrong message type: " + message_wrapper.message_type)
+            pass
+            # raise exceptions.NameError(
+            #         "Wrong message type: " + message_wrapper.message_type)
 
     def _decode_hello_reply_ready(self, message_wrapper):
         if ("Welcome" == message_wrapper.message_type):
@@ -112,8 +114,9 @@ class Toto(object):
         elif ("Goodbye" == message_wrapper.message_type):
             self._handle_goodbye(message_wrapper.payload)
         else:
-            raise exceptions.NameError(
-                    "Wrong message type: " + message_wrapper.message_type)
+            pass
+            # raise exceptions.NameError(
+            #         "Wrong message type: " + message_wrapper.message_type)
 
     def _handle_welcome(self, payload):
         message = pb_server_game.Welcome()
@@ -182,14 +185,80 @@ class Toto(object):
         print("Goodbye ...")
         self._abort = True
 
+    def send_input(self, joystick):
+        pb_input = pb_controller.Input()
+        pb_input.move.left = joystick.left
+        pb_input.move.right = joystick.right
+        pb_input.fire.weapon1 = joystick.fire_weapon1
+        pb_input.fire.weapon2 = joystick.fire_weapon2
+        payload = pb_input.SerializeToString()
+        message = self._routing_id + ' Input ' + payload
+        self._push_socket.send(message)
+
+
 def main():
     random.seed(None)
     #toto = Toto("tcp://localhost:9001", "tcp://localhost:9000")
     toto = Toto()
     toto.start()
-    for i in range(10):
-        print("Process " + str(i))
+    done = False
+    import pygame
+    import time
+    import os
+    pygame.init()
+    os.putenv('SDL_VIDEODRIVER', 'dummy')
+    pygame.display.set_mode((1,1))
+    pygame.display.init()
+    pygame.joystick.init()
+    sensivity = 0.05
+    if False:
+        while not done:
+            for event in pygame.event.get(10):
+                if event.type == pygame.JOYBUTTONDOWN:
+                    print("Joystick button pressed.")
+                if event.type == pygame.JOYBUTTONUP:
+                    print("Joystick button released.")
+            joystick_count = pygame.joystick.get_count()
+            print(joystick_count, " joystick(s) detected")
+            for i in range(joystick_count):
+                joystick = pygame.joystick.Joystick(i)
+                if not joystick.get_init():
+                    joystick.init()
+                print(" ", i, joystick.get_name())
+                axes = joystick.get_numaxes()
+                print("Number of axes: {}".format(axes))
+                for i in range(axes):
+                    axis = joystick.get_axis(i)
+                    print("axis", i, "=", axis)
+                buttons = joystick.get_numbuttons()
+                print("Number of axes: {}".format(buttons))
+                for i in range(buttons):
+                    button = joystick.get_button(i)
+                    print("button", i, "=", button)
+            time.sleep(1)
+    while not done:
+        for event in pygame.event.get(10):
+            if event.type == pygame.JOYBUTTONDOWN:
+                print("Joystick button pressed.")
+            if event.type == pygame.JOYBUTTONUP:
+                print("Joystick button released.")
+        joystick_count = pygame.joystick.get_count()
+        if (joystick_count > 1):
+            print("Warning,", joystick_count, " joysticks detected")
+        for i in range(joystick_count):
+            joystick = pygame.joystick.Joystick(i)
+            if not joystick.get_init():
+                joystick.init()
+            joystick_wrapper = Joystick(sensivity, joystick)
+            joystick_wrapper.process()
+            # print("left =", joystick_wrapper.left, "; right =", joystick_wrapper.right)
+            #print(joystick_wrapper.right)
+            #print(joystick_wrapper.fire_weapon1)
+            #print(joystick_wrapper.fire_weapon2)
+            toto.send_input(joystick_wrapper)
+
         toto.process()
+        #time.sleep(1)
 
 if ("__main__" == __name__):
     main()

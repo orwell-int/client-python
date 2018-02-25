@@ -2,6 +2,8 @@ from __future__ import print_function
 import socket
 import struct
 import sys
+# @TODO ? implement proper broadcast address finding
+# import netifaces
 
 
 def get_network_ip():
