@@ -108,12 +108,12 @@ class Joystick(object):
             if (self._pygame_joystick.get_button(11) != 0):
                 self.start = True
         self._convert(x, y, factor)
-        if ((self._previous_left != self.left) or
+        self._has_new_values = (
+				(self._previous_left != self.left) or
                 (self._previous_right != self.right) or
                 (self._previous_fire_weapon1 != self.fire_weapon1) or
                 (self._previous_fire_weapon2 != self.fire_weapon2) or
-                (self._previous_start != self.start)):
-            self._has_new_values = True
+                (self._previous_start != self.start))
         self._previous_left = self.left
         self._previous_right = self.right
         self._previous_fire_weapon1 = self.fire_weapon1

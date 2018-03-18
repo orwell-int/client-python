@@ -88,7 +88,7 @@ class Toto(object):
         message_wrapper = self._receive()
         if (message_wrapper is None):
             return
-        print(self._state + " | " + str(message_wrapper))
+        logging.debug(self._state + " | " + str(message_wrapper))
         if (Toto.STATE_HELLO_SENT == self._state):
             if (self._routing_id == message_wrapper.recipient):
                 self._decode_hello_reply(message_wrapper)
@@ -110,7 +110,7 @@ class Toto(object):
                 if (message_wrapper.recipient in ("all_clients", self._routing_id)):
                     return message_wrapper
         except zmq.Again as e:
-            print("no message")
+            #print("no message")
             pass
         return None
 
@@ -185,6 +185,8 @@ class Toto(object):
         print("_check_start_game: ", game_state.playing)
         if (game_state.playing):
             self._state = Toto.STATE_GAME_RUNNING
+        else:
+            self._state = Toto.STATE_WAITING_GAME_START
 
     def _decode_game_state_init(self, message_wrapper):
         if ("GameState" == message_wrapper.message_type):
@@ -224,6 +226,7 @@ class Toto(object):
             pb_input.fire.weapon2 = joystick.fire_weapon2
             payload = pb_input.SerializeToString()
             message = self._routing_id + ' Input ' + payload
+            logging.debug("message sent: " + repr(message))
             self._push_socket.send(message)
 
 
@@ -274,7 +277,7 @@ def main():
             time.sleep(1)
     k = 0
     while not done:
-        if (0 == k % 10):
+        if (0 == k % 100):
             print(k)
         k += 1
         for event in pygame.event.get(0.01):
