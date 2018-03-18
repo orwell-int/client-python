@@ -24,12 +24,28 @@ class Joystick(object):
     ANGLE_MIN = 0.0
     ANGLE_MAX = math.pi * 0.5
 
-    def __init__(
-            self,
-            dead_zone,
+    JOYSTICKS = {}
+
+    @classmethod
+    def get_joystick(
+            cls,
             pygame_joystick,
+            dead_zone,
             angle=math.pi * 0.25,
             precision=0.025):
+        if (pygame_joystick.get_name() in cls.JOYSTICKS.keys()):
+            return cls.JOYSTICKS[pygame_joystick.get_name()]
+        else:
+            joystick = Joystick(pygame_joystick, dead_zone, angle, precision)
+            cls.JOYSTICKS[pygame_joystick.get_name()] = joystick
+            return joystick
+
+    def __init__(
+            self,
+            pygame_joystick,
+            dead_zone,
+            angle,
+            precision):
         assert(Joystick.ANGLE_MIN < angle < Joystick.ANGLE_MAX)
         self._dead_zone = dead_zone
         self._joystick_type = JoystickType.build(pygame_joystick.get_name())
@@ -43,6 +59,12 @@ class Joystick(object):
         self.start = False
         self._debug = False
         self._pygame_joystick = pygame_joystick
+        self._previous_left = None
+        self._previous_right = None
+        self._previous_fire_weapon1 = None
+        self._previous_fire_weapon2 = None
+        self._previous_start = False
+        self._has_new_values = False
 
     def _round(self, value):
         new_value = int(value / self._precision) * self._precision
@@ -56,15 +78,15 @@ class Joystick(object):
         y = self._pygame_joystick.get_axis(1)
         # print("y = " + str(y))
         if (self._debug):
-            if (buttons.get(2, 0) != 0):
+            if (self._pygame_joystick.get_button(2) != 0):
                 # X
                 self._angle -= 0.0001
                 print("angle = " + str(self._angle))
-            if (buttons.get(1, 0) != 0):
+            if (self._pygame_joystick.get_button(1) != 0):
                 # B
                 self._angle += 0.0001
                 print("angle = " + str(self._angle))
-            if (buttons.get(3, 0) != 0):
+            if (self._pygame_joystick.get_button(3) != 0):
                 # Y
                 self._toggle_direction()
         if (JoystickType.xinput == self._joystick_type):
@@ -72,10 +94,10 @@ class Joystick(object):
             factor = self._invert_direction * buttons.get(7, 0.0)
             # print("factor = " + str(factor))
             # left button (not arrow)
-            self.fire_weapon1 = (buttons.get(4, 0) != 0)
+            self.fire_weapon1 = (self._pygame_joystick.get_button(4) != 0)
             # left trigger
-            self.fire_weapon2 = (buttons.get(6, 0) != 0)
-            if (buttons.get(9, 0) != 0):
+            self.fire_weapon2 = (self._pygame_joystick.get_button(6) != 0)
+            if (self._pygame_joystick.get_button(9) != 0):
                 self.start = True
         else:
             # HOTAS
@@ -86,19 +108,20 @@ class Joystick(object):
             if (self._pygame_joystick.get_button(11) != 0):
                 self.start = True
         self._convert(x, y, factor)
+        if ((self._previous_left != self.left) or
+                (self._previous_right != self.right) or
+                (self._previous_fire_weapon1 != self.fire_weapon1) or
+                (self._previous_fire_weapon2 != self.fire_weapon2) or
+                (self._previous_start != self.start)):
+            self._has_new_values = True
+        self._previous_left = self.left
+        self._previous_right = self.right
+        self._previous_fire_weapon1 = self.fire_weapon1
+        self._previous_fire_weapon2 = self.fire_weapon2
+        self._previous_start = self.start
 
     def _toggle_direction(self):
         self._invert_direction = -self._invert_direction
-
-    def _convert2(self, x, y, factor):
-        cosine = math.cos(self._angle)
-        sine = math.sin(self._angle)
-        self.left = self._round(factor * (
-                x * cosine +
-                y * sine))
-        self.right = self._round(factor * (
-                y * cosine -
-                x * sine))
 
     def _convert(self, x, y, factor):
         cosine = math.cos(self._angle)
@@ -120,3 +143,7 @@ class Joystick(object):
         self.right = max(-1, min(
                 1,
                 big_right))
+
+    @property
+    def has_new_values(self):
+        return self._has_new_values
