@@ -57,6 +57,7 @@ class Joystick(object):
         self.fire_weapon1 = False
         self.fire_weapon2 = False
         self.start = False
+        self.ping = False
         self._debug = False
         self._pygame_joystick = pygame_joystick
         self._previous_left = None
@@ -64,6 +65,7 @@ class Joystick(object):
         self._previous_fire_weapon1 = None
         self._previous_fire_weapon2 = None
         self._previous_start = False
+        self._previous_ping = False
         self._has_new_values = False
 
     def _round(self, value):
@@ -91,34 +93,35 @@ class Joystick(object):
                 self._toggle_direction()
         if (JoystickType.xinput == self._joystick_type):
             # Gamepad
-            factor = self._invert_direction * buttons.get(7, 0.0)
+            factor = self._invert_direction * self._pygame_joystick.get_axis(7)
             # print("factor = " + str(factor))
             # left button (not arrow)
             self.fire_weapon1 = (self._pygame_joystick.get_button(4) != 0)
             # left trigger
             self.fire_weapon2 = (self._pygame_joystick.get_button(6) != 0)
-            if (self._pygame_joystick.get_button(9) != 0):
-                self.start = True
+            self.start = (self._pygame_joystick.get_button(9) != 0)
         else:
             # HOTAS
             factor = -self._invert_direction * self._pygame_joystick.get_axis(2)
             # print("factor = " + str(factor))
             self.fire_weapon1 = (self._pygame_joystick.get_button(1) != 0)
             self.fire_weapon2 = (self._pygame_joystick.get_button(0) != 0)
-            if (self._pygame_joystick.get_button(11) != 0):
-                self.start = True
+            self.start = (self._pygame_joystick.get_button(11) != 0)
+            self.ping = (self._pygame_joystick.get_button(3) != 0)
         self._convert(x, y, factor)
         self._has_new_values = (
-				(self._previous_left != self.left) or
+                (self._previous_left != self.left) or
                 (self._previous_right != self.right) or
                 (self._previous_fire_weapon1 != self.fire_weapon1) or
                 (self._previous_fire_weapon2 != self.fire_weapon2) or
-                (self._previous_start != self.start))
+                (self._previous_start != self.start) or
+                (self._previous_ping != self.ping))
         self._previous_left = self.left
         self._previous_right = self.right
         self._previous_fire_weapon1 = self.fire_weapon1
         self._previous_fire_weapon2 = self.fire_weapon2
         self._previous_start = self.start
+        self._previous_ping = self.ping
 
     def _toggle_direction(self):
         self._invert_direction = -self._invert_direction

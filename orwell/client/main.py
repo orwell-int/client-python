@@ -3,6 +3,8 @@ import exceptions
 import random
 import sys
 import logging
+import datetime
+import time
 
 import pygame
 import signal
@@ -13,6 +15,9 @@ import orwell.messages.controller_pb2 as pb_controller
 import orwell.messages.server_game_pb2 as pb_server_game
 from orwell.client.broadcast import Broadcast
 from orwell.client.joystick import Joystick
+
+global NAME
+NAME = "client"
 
 
 class MessageWrapper(object):
@@ -89,6 +94,9 @@ class Toto(object):
         if (message_wrapper is None):
             return
         logging.debug(self._state + " | " + str(message_wrapper))
+        if (("Pong" == message_wrapper.message_type) and
+            (self._routing_id == message_wrapper.recipient)):
+            self._decode_pong(message_wrapper)
         if (Toto.STATE_HELLO_SENT == self._state):
             if (self._routing_id == message_wrapper.recipient):
                 self._decode_hello_reply(message_wrapper)
@@ -121,6 +129,25 @@ class Toto(object):
         pb_message.ready = ready
         payload = pb_message.SerializeToString()
         return self._routing_id + ' Hello ' + payload
+
+    def _decode_pong(self, message_wrapper):
+        print("_decode_pong")
+        message = pb_robot.Pong()
+        message.ParseFromString(payload)
+        print("Pong ; id = " + str(message.id) +
+              " ; len(timing) = " + len(message.timing))
+        global NAME
+        for timing in message.timing:
+            timestamp = timing.timestamp
+            if (NAME == timing.logger):
+                ts = time.mktime(datetime.datetime.now().timetuple())
+                elapsed = int(ts) - timestamp
+            else:
+                elapsed = timing.elapsed
+            print("'{logger}': @{timestamp} for {elapsed}".format(
+                logger=timing.logger,
+                timestamp=timestamp,
+                elapsed=elapsed))
 
     def _decode_hello_reply(self, message_wrapper):
         print("_decode_hello_reply", message_wrapper.message_type)
@@ -228,6 +255,18 @@ class Toto(object):
             message = self._routing_id + ' Input ' + payload
             logging.debug("message sent: " + repr(message))
             self._push_socket.send(message)
+            if (joystick.ping):
+                pb_ping = pb_controller.Ping()
+                timing_event = pb_ping.timing.add()
+                global NAME
+                timing_event.logger = NAME
+                ts = time.mktime(datetime.datetime.now().timetuple())
+                timestamp = int(ts)
+                timing_event.timestamp = timestamp
+                payload = pb_ping.SerializeToString()
+                message = self._routing_id + ' Ping ' + payload
+                logging.debug("message sent: " + repr(message))
+                self._push_socket.send(message)
 
 
 global TOTO
