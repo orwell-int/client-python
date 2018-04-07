@@ -1,5 +1,4 @@
 from __future__ import print_function
-import exceptions
 import random
 import sys
 import logging
@@ -13,6 +12,7 @@ import zmq
 
 import orwell.messages.controller_pb2 as pb_controller
 import orwell.messages.server_game_pb2 as pb_server_game
+import orwell.messages.server_game_pb2 as pb_robot
 from orwell.client.broadcast import Broadcast
 from orwell.client.joystick import Joystick
 
@@ -55,7 +55,8 @@ class Toto(object):
     def __init__(self, push_address=None, subscribe_address=None):
         if ((push_address is None) or (subscribe_address is None)):
             broadcast = Broadcast()
-            print(broadcast.push_address + " / " + broadcast.subscribe_address)
+            logging.info(broadcast.push_address +
+                    " / " + broadcast.subscribe_address)
             self._push_address = broadcast.push_address
             self._subscribe_address = broadcast.subscribe_address
         else:
@@ -85,7 +86,7 @@ class Toto(object):
     def start(self):
         assert(Toto.STATE_INIT == self._state)
         hello = self._build_hello(True)
-        print("send hello: ", repr(hello))
+        logging.info("send hello: ", repr(hello))
         self._push_socket.send(hello)
         self._state = Toto.STATE_HELLO_SENT
 
@@ -95,7 +96,7 @@ class Toto(object):
             return
         logging.debug(self._state + " | " + str(message_wrapper))
         if (("Pong" == message_wrapper.message_type) and
-            (self._routing_id == message_wrapper.recipient)):
+                (self._routing_id == message_wrapper.recipient)):
             self._decode_pong(message_wrapper)
         if (Toto.STATE_HELLO_SENT == self._state):
             if (self._routing_id == message_wrapper.recipient):
@@ -115,10 +116,11 @@ class Toto(object):
             message = self._subscribe_socket.recv(zmq.NOBLOCK)
             if (message):
                 message_wrapper = MessageWrapper(message)
-                if (message_wrapper.recipient in ("all_clients", self._routing_id)):
+                if (message_wrapper.recipient in
+                        ("all_clients", self._routing_id)):
                     return message_wrapper
         except zmq.Again as e:
-            #print("no message")
+            logging.debug("no message")
             pass
         return None
 
@@ -131,11 +133,12 @@ class Toto(object):
         return self._routing_id + ' Hello ' + payload
 
     def _decode_pong(self, message_wrapper):
-        print("_decode_pong")
+        logging.debug("_decode_pong")
         message = pb_robot.Pong()
-        message.ParseFromString(payload)
-        print("Pong ; id = " + str(message.id) +
-              " ; len(timing) = " + len(message.timing))
+        message.ParseFromString(message_wrapper.payload)
+        logging.info(
+                "Pong ; id = " + str(message.id) +
+                " ; len(timing) = " + len(message.timing))
         global NAME
         for timing in message.timing:
             timestamp = timing.timestamp
@@ -144,21 +147,19 @@ class Toto(object):
                 elapsed = int(ts) - timestamp
             else:
                 elapsed = timing.elapsed
-            print("'{logger}': @{timestamp} for {elapsed}".format(
+            logging.info("'{logger}': @{timestamp} for {elapsed}".format(
                 logger=timing.logger,
                 timestamp=timestamp,
                 elapsed=elapsed))
 
     def _decode_hello_reply(self, message_wrapper):
-        print("_decode_hello_reply", message_wrapper.message_type)
+        logging.debug("_decode_hello_reply", message_wrapper.message_type)
         if ("Welcome" == message_wrapper.message_type):
             self._handle_welcome(message_wrapper.payload)
         elif ("Goodbye" == message_wrapper.message_type):
             self._handle_goodbye(message_wrapper.payload)
         else:
-            pass
-            # raise exceptions.NameError(
-            #         "Wrong message type: " + message_wrapper.message_type)
+            logging.debug("Wrong message type: " + message_wrapper.message_type)
 
     def _decode_hello_reply_ready(self, message_wrapper):
         if ("Welcome" == message_wrapper.message_type):
@@ -166,16 +167,15 @@ class Toto(object):
         elif ("Goodbye" == message_wrapper.message_type):
             self._handle_goodbye(message_wrapper.payload)
         else:
-            pass
-            # raise exceptions.NameError(
-            #         "Wrong message type: " + message_wrapper.message_type)
+            logging.debug("Wrong message type: " + message_wrapper.message_type)
 
     def _handle_welcome(self, payload):
         message = pb_server_game.Welcome()
         message.ParseFromString(payload)
-        print("Welcome ; id = " + str(message.id) +
-              " ; robot = '" + message.robot + "'" +
-              " ; team = '" + message.team + "'")
+        logging.info(
+                "Welcome ; id = " + str(message.id) +
+                " ; robot = '" + message.robot + "'" +
+                " ; team = '" + message.team + "'")
         self._robot = message.robot
         self._team = message.team
         self._routing_id = str(message.id)
@@ -186,9 +186,10 @@ class Toto(object):
     def _handle_welcome_ready(self, payload):
         message = pb_server_game.Welcome()
         message.ParseFromString(payload)
-        print("Welcome [ready] ; id = " + str(message.id) +
-              " ; robot = '" + message.robot + "'" +
-              " ; team = '" + message.team + "'")
+        logging.info(
+                "Welcome [ready] ; id = " + str(message.id) +
+                " ; robot = '" + message.robot + "'" +
+                " ; team = '" + message.team + "'")
         self._robot = message.robot
         self._team = message.team
         self._routing_id = str(message.id)
@@ -198,18 +199,18 @@ class Toto(object):
             self._state = Toto.STATE_WAITING_GAME_START
 
     def _configure(self, game_state):
-        print("playing ? " + str(game_state.playing))
-        print("time left: " + str(game_state.seconds))
+        logging.info("playing ? " + str(game_state.playing))
+        logging.info("time left: " + str(game_state.seconds))
         # self._update_running(game_state.playing)
         for team in game_state.teams:
-            print(team.name + " (" + str(team.num_players) +
-                  ") -> " + str(team.score))
+            logging.info(team.name + " (" + str(team.num_players) +
+                        ") -> " + str(team.score))
         # let's assume we configure the different visualisations now
         self._push_socket.send(self._build_hello(True))
         self._state = Toto.STATE_HELLO_SENT_READY
 
     def _check_start_game(self, game_state):
-        print("_check_start_game: ", game_state.playing)
+        logging.info("_check_start_game: ", game_state.playing)
         if (game_state.playing):
             self._state = Toto.STATE_GAME_RUNNING
         else:
@@ -234,14 +235,14 @@ class Toto(object):
             self._update_visualisations(message)
 
     def _update_visualisations(self, game_state):
-        print("Updating visualisations")
+        logging.info("Updating visualisations")
         if (not game_state.running):
             self._state = Toto.STATE_WAITING_GAME_START
 
     def _handle_goodbye(self, payload):
         message = pb_server_game.Goodbye()
         message.ParseFromString(payload)
-        print("Goodbye ...")
+        logging.info("Goodbye ...")
         self._abort = True
 
     def send_input(self, joystick):
@@ -281,39 +282,12 @@ def main():
     TOTO = toto
     toto.start()
     done = False
-    import time
-    import os
     pygame.init()
     os.putenv('SDL_VIDEODRIVER', 'dummy')
     pygame.display.set_mode((1,1))
     pygame.display.init()
     pygame.joystick.init()
     sensivity = 0.05
-    if False:
-        while not done:
-            for event in pygame.event.get(10):
-                if event.type == pygame.JOYBUTTONDOWN:
-                    print("Joystick button pressed.")
-                if event.type == pygame.JOYBUTTONUP:
-                    print("Joystick button released.")
-            joystick_count = pygame.joystick.get_count()
-            print(joystick_count, " joystick(s) detected")
-            for i in range(joystick_count):
-                joystick = pygame.joystick.Joystick(i)
-                if not joystick.get_init():
-                    joystick.init()
-                print(" ", i, joystick.get_name())
-                axes = joystick.get_numaxes()
-                print("Number of axes: {}".format(axes))
-                for i in range(axes):
-                    axis = joystick.get_axis(i)
-                    print("axis", i, "=", axis)
-                buttons = joystick.get_numbuttons()
-                print("Number of axes: {}".format(buttons))
-                for i in range(buttons):
-                    button = joystick.get_button(i)
-                    print("button", i, "=", button)
-            time.sleep(1)
     k = 0
     while not done:
         if (0 == k % 100):
@@ -346,8 +320,9 @@ def main():
         toto.process()
     pygame.quit()
 
+
 def signal_handler(signal, frame):
-    print('You pressed Ctrl+C!')
+    logging.info('You pressed Ctrl+C!')
     global TOTO
     TOTO.destroy()
     pygame.quit()
