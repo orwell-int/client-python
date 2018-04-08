@@ -1,6 +1,7 @@
 from __future__ import division
 import math
 from enum import Enum
+import logging
 
 XINPUT = "xinput"
 T_FLIGHT_HOTAS_X = "T.Flight Hotas X"
@@ -33,11 +34,15 @@ class Joystick(object):
             dead_zone,
             angle=math.pi * 0.25,
             precision=0.025):
+        logging.debug("get_joystick IN")
         if (pygame_joystick.get_name() in cls.JOYSTICKS.keys()):
-            return cls.JOYSTICKS[pygame_joystick.get_name()]
+            joystick = cls.JOYSTICKS[pygame_joystick.get_name()]
+            logging.debug("get_joystick OUT memo")
+            return joystick
         else:
             joystick = Joystick(pygame_joystick, dead_zone, angle, precision)
             cls.JOYSTICKS[pygame_joystick.get_name()] = joystick
+            logging.debug("get_joystick OUT new")
             return joystick
 
     def __init__(
@@ -67,6 +72,8 @@ class Joystick(object):
         self._previous_start = False
         self._previous_ping = False
         self._has_new_values = False
+        if (not pygame_joystick.get_init()):
+            pygame_joystick.init()
 
     def _round(self, value):
         new_value = int(value / self._precision) * self._precision
@@ -150,3 +157,15 @@ class Joystick(object):
     @property
     def has_new_values(self):
         return self._has_new_values
+
+def configure_logging(verbose):
+    logger = logging.getLogger(__name__)
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+            '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    if (verbose):
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)

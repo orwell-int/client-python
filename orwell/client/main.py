@@ -1,8 +1,8 @@
 from __future__ import print_function
 import random
+import os
 import sys
 import logging
-import datetime
 import time
 
 import pygame
@@ -12,7 +12,7 @@ import zmq
 
 import orwell.messages.controller_pb2 as pb_controller
 import orwell.messages.server_game_pb2 as pb_server_game
-import orwell.messages.server_game_pb2 as pb_robot
+import orwell.messages.robot_pb2 as pb_robot
 from orwell.client.broadcast import Broadcast
 from orwell.client.joystick import Joystick
 
@@ -86,7 +86,7 @@ class Toto(object):
     def start(self):
         assert(Toto.STATE_INIT == self._state)
         hello = self._build_hello(True)
-        logging.info("send hello: ", repr(hello))
+        logging.info("send hello: " + repr(hello))
         self._push_socket.send(hello)
         self._state = Toto.STATE_HELLO_SENT
 
@@ -120,7 +120,7 @@ class Toto(object):
                         ("all_clients", self._routing_id)):
                     return message_wrapper
         except zmq.Again as e:
-            logging.debug("no message")
+            # logging.debug("no message: " + str(e))
             pass
         return None
 
@@ -137,14 +137,15 @@ class Toto(object):
         message = pb_robot.Pong()
         message.ParseFromString(message_wrapper.payload)
         logging.info(
-                "Pong ; id = " + str(message.id) +
-                " ; len(timing) = " + len(message.timing))
+                "Pong ; len(timing) = " + str(len(message.timing)))
         global NAME
         for timing in message.timing:
             timestamp = timing.timestamp
             if (NAME == timing.logger):
-                ts = time.mktime(datetime.datetime.now().timetuple())
-                elapsed = int(ts) - timestamp
+                timestamp_now = int(round(time.time() * 1000))
+                logging.info("timestamp_now = " + str(timestamp_now))
+                logging.info("timestamp = " + str(timestamp))
+                elapsed =  timestamp_now - timestamp
             else:
                 elapsed = timing.elapsed
             logging.info("'{logger}': @{timestamp} for {elapsed}".format(
@@ -153,7 +154,7 @@ class Toto(object):
                 elapsed=elapsed))
 
     def _decode_hello_reply(self, message_wrapper):
-        logging.debug("_decode_hello_reply", message_wrapper.message_type)
+        logging.debug("_decode_hello_reply " + str(message_wrapper.message_type))
         if ("Welcome" == message_wrapper.message_type):
             self._handle_welcome(message_wrapper.payload)
         elif ("Goodbye" == message_wrapper.message_type):
@@ -210,7 +211,7 @@ class Toto(object):
         self._state = Toto.STATE_HELLO_SENT_READY
 
     def _check_start_game(self, game_state):
-        logging.info("_check_start_game: ", game_state.playing)
+        logging.info("_check_start_game: " + str(game_state.playing))
         if (game_state.playing):
             self._state = Toto.STATE_GAME_RUNNING
         else:
@@ -245,7 +246,7 @@ class Toto(object):
         logging.info("Goodbye ...")
         self._abort = True
 
-    def send_input(self, joystick):
+    def send_input(self, joystick, force_ping):
         if (joystick.has_new_values):
             pb_input = pb_controller.Input()
             pb_input.move.left = joystick.left
@@ -256,17 +257,16 @@ class Toto(object):
             message = self._routing_id + ' Input ' + payload
             logging.debug("message sent: " + repr(message))
             self._push_socket.send(message)
-            if (joystick.ping):
+            if (joystick.ping or force_ping):
                 pb_ping = pb_controller.Ping()
                 timing_event = pb_ping.timing.add()
                 global NAME
                 timing_event.logger = NAME
-                ts = time.mktime(datetime.datetime.now().timetuple())
-                timestamp = int(ts)
+                timestamp = int(round(time.time() * 1000))
                 timing_event.timestamp = timestamp
                 payload = pb_ping.SerializeToString()
                 message = self._routing_id + ' Ping ' + payload
-                logging.debug("message sent: " + repr(message))
+                logging.info("message sent: " + repr(message))
                 self._push_socket.send(message)
 
 
@@ -276,7 +276,7 @@ TOTO = None
 
 def main():
     random.seed(None)
-    #toto = Toto("tcp://localhost:9001", "tcp://localhost:9000")
+    #toto = Toto("tcp://192.168.1.11:9001", "tcp://192.168.1.11:9000")
     toto = Toto()
     global TOTO
     TOTO = toto
@@ -288,34 +288,42 @@ def main():
     pygame.display.init()
     pygame.joystick.init()
     sensivity = 0.05
+    joystick_count = pygame.joystick.get_count()
+    if (joystick_count > 1):
+        logging.warning("Warning,", joystick_count, " joysticks detected")
+    for i in range(joystick_count):
+        logging.debug("joystick " + str(i) + " start")
+        joystick = pygame.joystick.Joystick(i)
+        logging.debug("joystick " + str(i) + " retrieved")
+        joystick_wrapper = Joystick.get_joystick(joystick, sensivity)
+        logging.debug("joystick " + str(i) + " wrapper found")
     k = 0
     while not done:
-        if (0 == k % 100):
+        if (0 == k % 10000):
             print(k)
         k += 1
-        for event in pygame.event.get(0.01):
+        force_ping = False
+        for event in pygame.event.get():
             if event.type == pygame.JOYBUTTONDOWN:
                 logging.debug("Joystick button pressed.")
             if event.type == pygame.JOYBUTTONUP:
                 logging.debug("Joystick button released.")
             elif event.type == pygame.KEYDOWN:
-                logging.debug("Key down:", event.key)
-                if event.key == pygame.K_ESCAPE:
+                logging.debug("Key down: " + str(event.key))
+                if event.key == pygame.K_SPACE:
+                    logging.debug("Forece ping")
+                    force_ping = True
+                elif event.key == pygame.K_ESCAPE:
                     done = True
         joystick_count = pygame.joystick.get_count()
         if (joystick_count > 1):
             logging.warning("Warning,", joystick_count, " joysticks detected")
-        for i in range(joystick_count):
-            joystick = pygame.joystick.Joystick(i)
-            if not joystick.get_init():
-                joystick.init()
-            joystick_wrapper = Joystick.get_joystick(joystick, sensivity)
-            joystick_wrapper.process()
-            # print("left =", joystick_wrapper.left, "; right =", joystick_wrapper.right)
-            #print(joystick_wrapper.right)
-            #print(joystick_wrapper.fire_weapon1)
-            #print(joystick_wrapper.fire_weapon2)
-            toto.send_input(joystick_wrapper)
+        joystick_wrapper.process()
+        # print("left =", joystick_wrapper.left, "; right =", joystick_wrapper.right)
+        #print(joystick_wrapper.right)
+        #print(joystick_wrapper.fire_weapon1)
+        #print(joystick_wrapper.fire_weapon2)
+        toto.send_input(joystick_wrapper, force_ping)
 
         toto.process()
     pygame.quit()
@@ -337,4 +345,6 @@ if ("__main__" == __name__):
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
     signal.signal(signal.SIGINT, signal_handler)
+    from orwell.client import joystick
+    joystick.configure_logging(True)
     main()
