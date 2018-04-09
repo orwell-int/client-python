@@ -20,8 +20,15 @@ setuptools.setup(
     author_email='',
     packages=setuptools.find_packages(exclude="test"),
     test_suite='nose.collector',
-    install_requires=['pyzmq', 'protobuf', 'enum34'],
-    tests_require=['nose', 'coverage', 'mock'],
+    install_requires=[
+        'argparse',
+        'enum34',
+        'future',
+        'protobuf',
+        'pygame',
+        'pyzmq',
+        ],
+    tests_require=['nose', 'coverage', ],
     entry_points={},
     classifiers=[
         'Development Status :: 3 - Alpha',
