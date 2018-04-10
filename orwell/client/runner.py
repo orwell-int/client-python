@@ -239,3 +239,15 @@ class Runner(object):
                 message = self._routing_id + ' Ping ' + payload
                 logging.info("message sent: " + repr(message))
                 self._push_socket.send(message)
+
+def configure_logging(verbose):
+    logger = logging.getLogger(__name__)
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+            '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    if (verbose):
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)

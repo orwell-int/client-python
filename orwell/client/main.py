@@ -1,4 +1,5 @@
 from __future__ import print_function
+import argparse
 import logging
 import os
 import random
@@ -18,8 +19,33 @@ global RUNNER
 RUNNER = None
 
 
+def parse():
+    parser = argparse.ArgumentParser(description='Client.')
+    parser.add_argument(
+        '--verbose', '-v',
+        help='Verbose mode',
+        default=False,
+        action="store_true")
+    arguments = parser.parse_args()
+    log = logging.getLogger(__name__)
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+            '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+    handler.setFormatter(formatter)
+    log.addHandler(handler)
+    if (arguments.verbose):
+        log.setLevel(logging.DEBUG)
+    else:
+        log.setLevel(logging.INFO)
+    from orwell.client import runner
+    runner.configure_logging(arguments.verbose)
+    from orwell.client import joystick
+    joystick.configure_logging(arguments.verbose)
+
+
 def main():
     random.seed(None)
+    parse()
     #runner = Runner("tcp://192.168.1.11:9001", "tcp://192.168.1.11:9000")
     runner = Runner()
     global RUNNER
@@ -28,7 +54,7 @@ def main():
     done = False
     pygame.init()
     os.putenv('SDL_VIDEODRIVER', 'dummy')
-    pygame.display.set_mode((1,1))
+    pygame.display.set_mode((1, 1))
     pygame.display.init()
     pygame.joystick.init()
     sensivity = 0.05
@@ -81,14 +107,5 @@ def signal_handler(signal, frame):
     sys.exit(0)
 
 if ("__main__" == __name__):
-    logger = logging.getLogger()
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-            '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
     signal.signal(signal.SIGINT, signal_handler)
-    from orwell.client import joystick
-    joystick.configure_logging(True)
     main()
