@@ -102,7 +102,9 @@ def main():
 def signal_handler(signal, frame):
     logging.info('You pressed Ctrl+C!')
     global RUNNER
-    RUNNER.destroy()
+    if (RUNNER):
+        RUNNER.destroy()
+    # let's hope it does nothing wrong if not initialised
     pygame.quit()
     sys.exit(0)
 
