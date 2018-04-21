@@ -3,6 +3,9 @@ import math
 from enum import Enum
 import logging
 
+from orwell.client.device import Device
+from orwell.client.input import Input
+
 XINPUT = "xinput"
 T_FLIGHT_HOTAS_X = "T.Flight Hotas X"
 
@@ -21,7 +24,7 @@ class JoystickType(Enum):
 
 
 # No test yet
-class Joystick(object):
+class Joystick(Device):
     ANGLE_MIN = 0.0
     ANGLE_MAX = math.pi * 0.5
 
@@ -62,7 +65,7 @@ class Joystick(object):
         self.fire_weapon1 = False
         self.fire_weapon2 = False
         self.start = False
-        self.ping = False
+        self._ping = False
         self._debug = False
         self._pygame_joystick = pygame_joystick
         self._previous_left = None
@@ -70,7 +73,6 @@ class Joystick(object):
         self._previous_fire_weapon1 = None
         self._previous_fire_weapon2 = None
         self._previous_start = False
-        self._previous_ping = False
         self._has_new_values = False
         if (not pygame_joystick.get_init()):
             pygame_joystick.init()
@@ -114,21 +116,20 @@ class Joystick(object):
             self.fire_weapon1 = (self._pygame_joystick.get_button(1) != 0)
             self.fire_weapon2 = (self._pygame_joystick.get_button(0) != 0)
             self.start = (self._pygame_joystick.get_button(11) != 0)
-            self.ping = (self._pygame_joystick.get_button(3) != 0)
+            if (self._pygame_joystick.get_button(3) != 0):
+                self._ping = True
         self._convert(x, y, factor)
         self._has_new_values = (
                 (self._previous_left != self.left) or
                 (self._previous_right != self.right) or
                 (self._previous_fire_weapon1 != self.fire_weapon1) or
                 (self._previous_fire_weapon2 != self.fire_weapon2) or
-                (self._previous_start != self.start) or
-                (self._previous_ping != self.ping))
+                (self._previous_start != self.start))
         self._previous_left = self.left
         self._previous_right = self.right
         self._previous_fire_weapon1 = self.fire_weapon1
         self._previous_fire_weapon2 = self.fire_weapon2
         self._previous_start = self.start
-        self._previous_ping = self.ping
 
     def _toggle_direction(self):
         self._invert_direction = -self._invert_direction
@@ -157,6 +158,21 @@ class Joystick(object):
     @property
     def has_new_values(self):
         return self._has_new_values
+
+    def build_input(self):
+        return Input(
+                self.left,
+                self.right,
+                self.fire_weapon1,
+                self.fire_weapon2)
+
+    def read_ping(self):
+        if (self._ping):
+            self._ping = False
+            return True
+        else:
+            return False
+
 
 def configure_logging(verbose):
     logger = logging.getLogger(__name__)

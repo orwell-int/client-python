@@ -20,7 +20,8 @@ class Runner(object):
     STATE_WAITING_GAME_START = "STATE_WAITING_GAME_START"
     STATE_GAME_RUNNING = "STATE_GAME_RUNNING"
 
-    def __init__(self, push_address=None, subscribe_address=None):
+    def __init__(self, devices, push_address=None, subscribe_address=None):
+        self._devices = devices
         if ((push_address is None) or (subscribe_address is None)):
             broadcast = Broadcast()
             logging.info(broadcast.push_address +
@@ -57,6 +58,34 @@ class Runner(object):
         logging.info("send hello: " + repr(hello))
         self._push_socket.send(hello)
         self._state = Runner.STATE_HELLO_SENT
+
+    def run(self):
+        self.start()
+        done = False
+        k = 0
+        while not done:
+            if (0 == k % 10000):
+                print(k)
+            k += 1
+            for device in self._devices:
+                device.process()
+                if (device.has_new_values):
+                    self._push_socket.send(
+                            device.build_input().get_message(self._routing_id))
+                if (device.read_ping()):
+                    self._send_ping()
+
+    def _send_ping(self):
+        pb_ping = pb_controller.Ping()
+        timing_event = pb_ping.timing.add()
+        global NAME
+        timing_event.logger = NAME
+        timestamp = int(round(time.time() * 1000))
+        timing_event.timestamp = timestamp
+        payload = pb_ping.SerializeToString()
+        message = self._routing_id + ' Ping ' + payload
+        logging.info("message sent: " + repr(message))
+        self._push_socket.send(message)
 
     def process(self):
         message_wrapper = self._receive()

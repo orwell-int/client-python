@@ -9,6 +9,7 @@ import pygame
 import signal
 
 from orwell.client.joystick import Joystick
+from orwell.client.keyboard import Keyboard
 from orwell.client.runner import Runner
 
 global NAME
@@ -21,6 +22,16 @@ RUNNER = None
 
 def parse():
     parser = argparse.ArgumentParser(description='Client.')
+    parser.add_argument(
+        '--connection',
+        help='Proved connection parameters <ip>,<push_port>,<subscribe_port>',
+        default=None)
+    parser.add_argument(
+        '--no-joystick',
+        help='Disable joystick handling',
+        name='joystick',
+        default=True,
+        action="store_false")
     parser.add_argument(
         '--verbose', '-v',
         help='Verbose mode',
@@ -39,64 +50,59 @@ def parse():
         log.setLevel(logging.INFO)
     from orwell.client import runner
     runner.configure_logging(arguments.verbose)
-    from orwell.client import joystick
-    joystick.configure_logging(arguments.verbose)
+    from orwell.client import keyboard
+    keyboard.configure_logging(arguments.verbose)
+    if (arguments.joystick):
+        from orwell.client import joystick
+        joystick.configure_logging(arguments.verbose)
+    return arguments
 
+
+def build_runner(arguments, devices):
+    if (arguments.connection):
+        ip, push_port, subscribe_port = arguments.connection.split(',', 3)
+        runner = Runner(
+                devices,
+                push_address="tcp://{ip}:{port}".format(ip=ip, port=push_port),
+                subscribe_address="tcp://{ip}:{port}".format(
+                    ip=ip, port=subscribe_port))
+    else:
+        runner = Runner(devices)
+    return runner
 
 def main():
     random.seed(None)
-    parse()
-    #runner = Runner("tcp://192.168.1.11:9001", "tcp://192.168.1.11:9000")
-    runner = Runner()
-    global RUNNER
-    RUNNER = runner
-    runner.start()
-    done = False
-    pygame.init()
-    os.putenv('SDL_VIDEODRIVER', 'dummy')
-    pygame.display.set_mode((1, 1))
-    pygame.display.init()
-    pygame.joystick.init()
-    sensivity = 0.05
-    joystick_count = pygame.joystick.get_count()
-    if (joystick_count > 1):
-        logging.warning("Warning,", joystick_count, " joysticks detected")
-    for i in range(joystick_count):
-        logging.debug("joystick " + str(i) + " start")
-        joystick = pygame.joystick.Joystick(i)
-        logging.debug("joystick " + str(i) + " retrieved")
-        joystick_wrapper = Joystick.get_joystick(joystick, sensivity)
-        logging.debug("joystick " + str(i) + " wrapper found")
-    k = 0
-    while not done:
-        if (0 == k % 10000):
-            print(k)
-        k += 1
-        force_ping = False
-        for event in pygame.event.get():
-            if event.type == pygame.JOYBUTTONDOWN:
-                logging.debug("Joystick button pressed.")
-            if event.type == pygame.JOYBUTTONUP:
-                logging.debug("Joystick button released.")
-            elif event.type == pygame.KEYDOWN:
-                logging.debug("Key down: " + str(event.key))
-                if event.key == pygame.K_SPACE:
-                    logging.debug("Forece ping")
-                    force_ping = True
-                elif event.key == pygame.K_ESCAPE:
-                    done = True
+    arguments = parse()
+    # done = False
+    devices = []
+    if (arguments.joystick):
+        pygame.init()
+        os.putenv('SDL_VIDEODRIVER', 'dummy')
+        pygame.display.set_mode((1, 1))
+        pygame.display.init()
+        pygame.joystick.init()
+        sensivity = 0.05
         joystick_count = pygame.joystick.get_count()
         if (joystick_count > 1):
             logging.warning("Warning,", joystick_count, " joysticks detected")
-        joystick_wrapper.process()
-        # print("left =", joystick_wrapper.left, "; right =", joystick_wrapper.right)
-        #print(joystick_wrapper.right)
-        #print(joystick_wrapper.fire_weapon1)
-        #print(joystick_wrapper.fire_weapon2)
-        runner.send_input(joystick_wrapper, force_ping)
-
-        runner.process()
-    pygame.quit()
+        for i in range(joystick_count):
+            logging.debug("joystick " + str(i) + " start")
+            joystick = pygame.joystick.Joystick(i)
+            logging.debug("joystick " + str(i) + " retrieved")
+            joystick_wrapper = Joystick.get_joystick(joystick, sensivity)
+            logging.debug("joystick " + str(i) + " wrapper found")
+            devices.append(joystick_wrapper)
+        runner = build_runner(arguments, devices)
+        global RUNNER
+        RUNNER = runner
+        runner.run()
+        pygame.quit()
+    else:
+        devices.append(Keyboard())
+        runner = build_runner(arguments, devices)
+        global RUNNER
+        RUNNER = runner
+        runner.run()
 
 
 def signal_handler(signal, frame):
