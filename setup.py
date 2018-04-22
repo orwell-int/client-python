@@ -26,6 +26,7 @@ setuptools.setup(
         'future',
         'protobuf',
         'pygame',
+        'pynput',
         'pyzmq',
         ],
     tests_require=['nose', 'coverage', ],
