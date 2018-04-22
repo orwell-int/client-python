@@ -9,14 +9,8 @@ import pygame
 import signal
 
 from orwell.client.joystick import Joystick
-from orwell.client.keyboard import Keyboard
 from orwell.client.runner import Runner
 
-global NAME
-NAME = "client"
-
-
-global RUNNER
 RUNNER = None
 
 
@@ -29,7 +23,7 @@ def parse():
     parser.add_argument(
         '--no-joystick',
         help='Disable joystick handling',
-        name='joystick',
+        dest='joystick',
         default=True,
         action="store_false")
     parser.add_argument(
@@ -50,8 +44,6 @@ def parse():
         log.setLevel(logging.INFO)
     from orwell.client import runner
     runner.configure_logging(arguments.verbose)
-    from orwell.client import keyboard
-    keyboard.configure_logging(arguments.verbose)
     if (arguments.joystick):
         from orwell.client import joystick
         joystick.configure_logging(arguments.verbose)
@@ -71,6 +63,7 @@ def build_runner(arguments, devices):
     return runner
 
 def main():
+    global RUNNER
     random.seed(None)
     arguments = parse()
     # done = False
@@ -93,21 +86,21 @@ def main():
             logging.debug("joystick " + str(i) + " wrapper found")
             devices.append(joystick_wrapper)
         runner = build_runner(arguments, devices)
-        global RUNNER
         RUNNER = runner
         runner.run()
         pygame.quit()
     else:
-        devices.append(Keyboard())
+        from orwell.client import keyboard
+        keyboard.configure_logging(arguments.verbose)
+        devices.append(keyboard.Keyboard())
         runner = build_runner(arguments, devices)
-        global RUNNER
         RUNNER = runner
         runner.run()
 
 
 def signal_handler(signal, frame):
-    logging.info('You pressed Ctrl+C!')
     global RUNNER
+    logging.info('You pressed Ctrl+C!')
     if (RUNNER):
         RUNNER.destroy()
     # let's hope it does nothing wrong if not initialised

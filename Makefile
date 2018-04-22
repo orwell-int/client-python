@@ -17,4 +17,4 @@ clean: .env/bin/activate
 	. .env/bin/activate && coverage erase
 
 start: .env/bin/activate
-	. .env/bin/activate && python orwell/client/main.py
+	. .env/bin/activate && python orwell/client/main.py -v

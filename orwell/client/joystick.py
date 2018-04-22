@@ -3,11 +3,14 @@ import math
 from enum import Enum
 import logging
 
+import pygame
+
 from orwell.client.device import Device
 from orwell.client.input import Input
 
 XINPUT = "xinput"
 T_FLIGHT_HOTAS_X = "T.Flight Hotas X"
+LOGGER = None
 
 
 class JoystickType(Enum):
@@ -37,15 +40,15 @@ class Joystick(Device):
             dead_zone,
             angle=math.pi * 0.25,
             precision=0.025):
-        logging.debug("get_joystick IN")
+        LOGGER.debug("get_joystick IN")
         if (pygame_joystick.get_name() in cls.JOYSTICKS.keys()):
             joystick = cls.JOYSTICKS[pygame_joystick.get_name()]
-            logging.debug("get_joystick OUT memo")
+            LOGGER.debug("get_joystick OUT memo")
             return joystick
         else:
             joystick = Joystick(pygame_joystick, dead_zone, angle, precision)
             cls.JOYSTICKS[pygame_joystick.get_name()] = joystick
-            logging.debug("get_joystick OUT new")
+            LOGGER.debug("get_joystick OUT new")
             return joystick
 
     def __init__(
@@ -75,7 +78,14 @@ class Joystick(Device):
         self._previous_start = False
         self._has_new_values = False
         if (not pygame_joystick.get_init()):
+            LOGGER.info("Initialise pygame joystick")
             pygame_joystick.init()
+            LOGGER.debug("buttons: " + str(pygame_joystick.get_numbuttons()))
+            LOGGER.debug("axes: " + str(pygame_joystick.get_numaxes()))
+
+    def __del__(self):
+        if (self._pygame_joystick.get_init()):
+            self._pygame_joystick.quit()
 
     def _round(self, value):
         new_value = int(value / self._precision) * self._precision
@@ -84,6 +94,11 @@ class Joystick(Device):
         return new_value
 
     def process(self):
+        for event in pygame.event.get():
+            if event.type == pygame.JOYBUTTONDOWN:
+                print("Joystick button pressed.")
+            if event.type == pygame.JOYBUTTONUP:
+                print("Joystick button released.")
         x = -self._pygame_joystick.get_axis(0)
         # print("x = " + str(x))
         y = self._pygame_joystick.get_axis(1)
@@ -125,6 +140,8 @@ class Joystick(Device):
                 (self._previous_fire_weapon1 != self.fire_weapon1) or
                 (self._previous_fire_weapon2 != self.fire_weapon2) or
                 (self._previous_start != self.start))
+        if (self._has_new_values):
+            LOGGER.debug("has new value ? " + str(self._has_new_values))
         self._previous_left = self.left
         self._previous_right = self.right
         self._previous_fire_weapon1 = self.fire_weapon1
@@ -160,6 +177,7 @@ class Joystick(Device):
         return self._has_new_values
 
     def build_input(self):
+        LOGGER.debug("build_input")
         return Input(
                 self.left,
                 self.right,
@@ -175,13 +193,16 @@ class Joystick(Device):
 
 
 def configure_logging(verbose):
-    logger = logging.getLogger(__name__)
+    global LOGGER
+    print("joystick.configure_logging")
+    LOGGER = logging.getLogger(__name__)
+    LOGGER.propagate = False
     handler = logging.StreamHandler()
     formatter = logging.Formatter(
             '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    LOGGER.addHandler(handler)
     if (verbose):
-        logger.setLevel(logging.DEBUG)
+        LOGGER.setLevel(logging.DEBUG)
     else:
-        logger.setLevel(logging.INFO)
+        LOGGER.setLevel(logging.INFO)

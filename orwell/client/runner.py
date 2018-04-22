@@ -11,6 +11,9 @@ import orwell.messages.robot_pb2 as pb_robot
 from orwell.client.broadcast import Broadcast
 from orwell.client.message_wrapper import MessageWrapper
 
+NAME = "client"
+LOGGER = None
+
 
 class Runner(object):
     STATE_INIT = "STATE_INIT"
@@ -24,7 +27,7 @@ class Runner(object):
         self._devices = devices
         if ((push_address is None) or (subscribe_address is None)):
             broadcast = Broadcast()
-            logging.info(broadcast.push_address +
+            LOGGER.info(broadcast.push_address +
                          " / " + broadcast.subscribe_address)
             self._push_address = broadcast.push_address
             self._subscribe_address = broadcast.subscribe_address
@@ -37,13 +40,14 @@ class Runner(object):
         self._push_socket.connect(self._push_address)
         self._subscribe_socket = self._context.socket(zmq.SUB)
         self._subscribe_socket.setsockopt(zmq.LINGER, 0)
-        self._subscribe_socket.connect(self._subscribe_address)
         self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, "")
+        self._subscribe_socket.connect(self._subscribe_address)
         self._routing_id = "temporary_id_" + str(random.randint(0, 32768))
         self._robot = None
         self._team = None
         self._abort = False
         self._state = Runner.STATE_INIT
+        self._ping = False
 
     def destroy(self):
         self._push_socket.disconnect(self._push_address)
@@ -55,43 +59,48 @@ class Runner(object):
     def start(self):
         assert(Runner.STATE_INIT == self._state)
         hello = self._build_hello(True)
-        logging.info("send hello: " + repr(hello))
+        print("send hello: " + repr(hello))
+        LOGGER.info("send hello: " + repr(hello))
         self._push_socket.send(hello)
         self._state = Runner.STATE_HELLO_SENT
 
     def run(self):
         self.start()
-        done = False
         k = 0
-        while not done:
+        while not self._abort:
             if (0 == k % 10000):
                 print(k)
             k += 1
             for device in self._devices:
                 device.process()
-                if (device.has_new_values):
-                    self._push_socket.send(
-                            device.build_input().get_message(self._routing_id))
-                if (device.read_ping()):
-                    self._send_ping()
+
+                if (Runner.STATE_GAME_RUNNING == self._state):
+                    if (device.has_new_values):
+                        msg = device.build_input().get_message(self._routing_id)
+                        self._push_socket.send(msg)
+                if (not self._ping):
+                    if (device.read_ping()):
+                        self._send_ping()
+            self.process()
 
     def _send_ping(self):
+        self._ping = True
         pb_ping = pb_controller.Ping()
         timing_event = pb_ping.timing.add()
-        global NAME
         timing_event.logger = NAME
         timestamp = int(round(time.time() * 1000))
         timing_event.timestamp = timestamp
         payload = pb_ping.SerializeToString()
         message = self._routing_id + ' Ping ' + payload
-        logging.info("message sent: " + repr(message))
+        LOGGER.info("message sent: " + repr(message))
         self._push_socket.send(message)
 
     def process(self):
-        message_wrapper = self._receive()
+        blocking = (Runner.STATE_HELLO_SENT == self._state)
+        message_wrapper = self._receive(blocking)
         if (message_wrapper is None):
             return
-        logging.debug(self._state + " | " + str(message_wrapper))
+        LOGGER.debug(self._state + " | " + str(message_wrapper))
         if (("Pong" == message_wrapper.message_type) and
                 (self._routing_id == message_wrapper.recipient)):
             self._decode_pong(message_wrapper)
@@ -102,14 +111,17 @@ class Runner(object):
             self._decode_game_state_init(message_wrapper)
         elif (Runner.STATE_HELLO_SENT_READY == self._state):
             self._decode_hello_reply_ready(message_wrapper)
-        elif (Runner.STATE_WAITING_GAME_START):
+        elif (Runner.STATE_WAITING_GAME_START == self._state):
             self._decode_game_state_start(message_wrapper)
-        elif (Runner.STATE_GAME_RUNNING):
+        elif (Runner.STATE_GAME_RUNNING == self._state):
             self._decode_game_state_running(message_wrapper)
 
-    def _receive(self):
+    def _receive(self, blocking):
         try:
-            message = self._subscribe_socket.recv(zmq.NOBLOCK)
+            if (blocking):
+                message = self._subscribe_socket.recv()
+            else:
+                message = self._subscribe_socket.recv(zmq.NOBLOCK)
             if (message):
                 message_wrapper = MessageWrapper(message)
                 if (message_wrapper.recipient in
@@ -118,7 +130,7 @@ class Runner(object):
         except zmq.Again:
             pass
         # except zmq.Again as e:
-            # logging.debug("no message: " + str(e))
+            # LOGGER.debug("no message: " + str(e))
         return None
 
     def _build_hello(self, ready):
@@ -130,35 +142,35 @@ class Runner(object):
         return self._routing_id + ' Hello ' + payload
 
     def _decode_pong(self, message_wrapper):
-        logging.debug("_decode_pong")
+        LOGGER.debug("_decode_pong")
+        self._ping = False
         message = pb_robot.Pong()
         message.ParseFromString(message_wrapper.payload)
-        logging.info(
+        LOGGER.info(
                 "Pong ; len(timing) = " + str(len(message.timing)))
-        global NAME
         for timing in message.timing:
             timestamp = timing.timestamp
             if (NAME == timing.logger):
                 timestamp_now = int(round(time.time() * 1000))
-                logging.info("timestamp_now = " + str(timestamp_now))
-                logging.info("timestamp = " + str(timestamp))
+                LOGGER.info("timestamp_now = " + str(timestamp_now))
+                LOGGER.info("timestamp = " + str(timestamp))
                 elapsed = timestamp_now - timestamp
             else:
                 elapsed = timing.elapsed
-            logging.info("'{logger}': @{timestamp} for {elapsed}".format(
+            LOGGER.info("'{logger}': @{timestamp} for {elapsed}".format(
                 logger=timing.logger,
                 timestamp=timestamp,
                 elapsed=elapsed))
 
     def _decode_hello_reply(self, message_wrapper):
-        logging.debug("_decode_hello_reply " +
+        LOGGER.debug("_decode_hello_reply " +
                       str(message_wrapper.message_type))
         if ("Welcome" == message_wrapper.message_type):
             self._handle_welcome(message_wrapper.payload)
         elif ("Goodbye" == message_wrapper.message_type):
             self._handle_goodbye(message_wrapper.payload)
         else:
-            logging.debug("Wrong message type: " +
+            LOGGER.debug("Wrong message type: " +
                           message_wrapper.message_type)
 
     def _decode_hello_reply_ready(self, message_wrapper):
@@ -167,13 +179,13 @@ class Runner(object):
         elif ("Goodbye" == message_wrapper.message_type):
             self._handle_goodbye(message_wrapper.payload)
         else:
-            logging.debug("Wrong message type: " +
+            LOGGER.debug("Wrong message type: " +
                           message_wrapper.message_type)
 
     def _handle_welcome(self, payload):
         message = pb_server_game.Welcome()
         message.ParseFromString(payload)
-        logging.info(
+        LOGGER.info(
                 "Welcome ; id = " + str(message.id) +
                 " ; robot = '" + message.robot + "'" +
                 " ; team = '" + message.team + "'")
@@ -187,7 +199,7 @@ class Runner(object):
     def _handle_welcome_ready(self, payload):
         message = pb_server_game.Welcome()
         message.ParseFromString(payload)
-        logging.info(
+        LOGGER.info(
                 "Welcome [ready] ; id = " + str(message.id) +
                 " ; robot = '" + message.robot + "'" +
                 " ; team = '" + message.team + "'")
@@ -200,18 +212,18 @@ class Runner(object):
             self._state = Runner.STATE_WAITING_GAME_START
 
     def _configure(self, game_state):
-        logging.info("playing ? " + str(game_state.playing))
-        logging.info("time left: " + str(game_state.seconds))
+        LOGGER.info("playing ? " + str(game_state.playing))
+        LOGGER.info("time left: " + str(game_state.seconds))
         # self._update_running(game_state.playing)
         for team in game_state.teams:
-            logging.info(team.name + " (" + str(team.num_players) +
+            LOGGER.info(team.name + " (" + str(team.num_players) +
                          ") -> " + str(team.score))
         # let's assume we configure the different visualisations now
         self._push_socket.send(self._build_hello(True))
         self._state = Runner.STATE_HELLO_SENT_READY
 
     def _check_start_game(self, game_state):
-        logging.info("_check_start_game: " + str(game_state.playing))
+        LOGGER.info("_check_start_game: " + str(game_state.playing))
         if (game_state.playing):
             self._state = Runner.STATE_GAME_RUNNING
         else:
@@ -236,14 +248,15 @@ class Runner(object):
             self._update_visualisations(message)
 
     def _update_visualisations(self, game_state):
-        logging.info("Updating visualisations")
+        LOGGER.info("Updating visualisations")
         if (not game_state.running):
             self._state = Runner.STATE_WAITING_GAME_START
 
     def _handle_goodbye(self, payload):
         message = pb_server_game.Goodbye()
         message.ParseFromString(payload)
-        logging.info("Goodbye ...")
+        LOGGER.info("Goodbye ...")
+        self._state = Runner.STATE_INIT
         self._abort = True
 
     def send_input(self, joystick, force_ping):
@@ -255,28 +268,30 @@ class Runner(object):
             pb_input.fire.weapon2 = joystick.fire_weapon2
             payload = pb_input.SerializeToString()
             message = self._routing_id + ' Input ' + payload
-            logging.debug("message sent: " + repr(message))
+            LOGGER.debug("message sent: " + repr(message))
             self._push_socket.send(message)
             if (joystick.ping or force_ping):
                 pb_ping = pb_controller.Ping()
                 timing_event = pb_ping.timing.add()
-                global NAME
                 timing_event.logger = NAME
                 timestamp = int(round(time.time() * 1000))
                 timing_event.timestamp = timestamp
                 payload = pb_ping.SerializeToString()
                 message = self._routing_id + ' Ping ' + payload
-                logging.info("message sent: " + repr(message))
+                LOGGER.info("message sent: " + repr(message))
                 self._push_socket.send(message)
 
 def configure_logging(verbose):
-    logger = logging.getLogger(__name__)
+    global LOGGER
+    print("runner.configure_logging")
+    LOGGER = logging.getLogger(__name__)
+    LOGGER.propagate = False
     handler = logging.StreamHandler()
     formatter = logging.Formatter(
             '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    LOGGER.addHandler(handler)
     if (verbose):
-        logger.setLevel(logging.DEBUG)
+        LOGGER.setLevel(logging.DEBUG)
     else:
-        logger.setLevel(logging.INFO)
+        LOGGER.setLevel(logging.INFO)
