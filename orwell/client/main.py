@@ -18,7 +18,8 @@ def parse():
     parser = argparse.ArgumentParser(description='Client.')
     parser.add_argument(
         '--connection',
-        help='Proved connection parameters <ip>,<push_port>,<subscribe_port>',
+        help='Provide connection parameters '
+        '<ip>,<push_port>,<subscribe_port>,<replier_port>',
         default=None)
     parser.add_argument(
         '--no-joystick',
@@ -52,12 +53,18 @@ def parse():
 
 def build_runner(arguments, devices):
     if (arguments.connection):
-        ip, push_port, subscribe_port = arguments.connection.split(',', 3)
+        commas = arguments.connection.count(',')
+        ip, push_port, subscribe_port, replier_port = \
+                arguments.connection.split(',', 4)
         runner = Runner(
                 devices,
-                push_address="tcp://{ip}:{port}".format(ip=ip, port=push_port),
+                push_address="tcp://{ip}:{port}".format(
+                    ip=ip, port=push_port),
                 subscribe_address="tcp://{ip}:{port}".format(
-                    ip=ip, port=subscribe_port))
+                    ip=ip, port=subscribe_port),
+                replier_address="tcp://{ip}:{port}".format(
+                    ip=ip, port=replier_port)
+                )
     else:
         runner = Runner(devices)
     return runner
