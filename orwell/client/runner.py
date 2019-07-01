@@ -47,12 +47,13 @@ class Runner(object):
         self._push_socket.connect(self._push_address)
         self._subscribe_socket = self._context.socket(zmq.SUB)
         self._subscribe_socket.setsockopt(zmq.LINGER, 0)
-        self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, "")
         self._subscribe_socket.connect(self._subscribe_address)
         self._reply_socket = self._context.socket(zmq.REQ)
         self._reply_socket.setsockopt(zmq.LINGER, 0)
         self._reply_socket.connect(self._reply_address)
         self._routing_id = "temporary_id_" + str(random.randint(0, 32768))
+        # at first we are only interested to messages specific to this client
+        self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, self._routing_id)
         self._robot = None
         self._team = None
         self._abort = False
@@ -120,10 +121,7 @@ class Runner(object):
         try:
             message = self._subscribe_socket.recv(zmq.NOBLOCK)
             if (message):
-                message_wrapper = MessageWrapper(message)
-                if (message_wrapper.recipient in
-                        ("all_clients", self._routing_id)):
-                    return message_wrapper
+                return MessageWrapper(message)
         except zmq.Again:
             pass
         # except zmq.Again as e:
@@ -173,13 +171,21 @@ class Runner(object):
     def _handle_welcome(self, payload, ready):
         message = pb_server_game.Welcome()
         message.ParseFromString(payload)
+        new_routing_id = str(message.id)
         LOGGER.info(
-                "Welcome ; id = " + str(message.id) +
+                "Welcome ; id = " + new_routing_id +
                 " ; robot = '" + message.robot + "'" +
                 " ; team = '" + message.team + "'")
         self._robot = message.robot
         self._team = message.team
-        self._routing_id = str(message.id)
+        if (self._routing_id != new_routing_id):
+            # get rid of subscription to temporary routing id
+            self._subscribe_socket.setsockopt(zmq.UNSUBSCRIBE, self._routing_id)
+            self._routing_id = new_routing_id
+            # and replace with subscription to given id
+            self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, self._routing_id)
+            # also listen to messages for all clients
+            self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, "all_clients")
         if (message.game_state):
             self._check_start_game(message.game_state)
         elif (ready):

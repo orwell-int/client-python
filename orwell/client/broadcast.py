@@ -46,7 +46,7 @@ class Broadcast(object):
         try:
             print("before sendto")
             sent = self._socket.sendto(
-                    "<broadcast>".encode("ascii"), self._group)
+                    "1".encode("ascii"), self._group)
             print("after sendto ; " + repr(sent))
             while not self._received:
                 try:
@@ -89,10 +89,16 @@ class Broadcast(object):
         end_publisher = end_puller + 2 + publisher_size
         publisher_address = to_str(self._data[end_puller + 2:end_publisher])
         # print("publisher_address = " + publisher_address)
-        assert(self._data[end_publisher] == '\x00')
+        assert(self._data[end_publisher] == '\xa2')
+        replier_size = to_char(self._data[end_puller + 1])
+        # print("replier_size = " + str(replier_size))
+        end_replier = end_puller + 2 + replier_size
+        replier_address = to_str(self._data[end_puller + 2:end_replier])
+        # print("replier_address = " + replier_address)
         sender_ip, _ = self._sender
         self._push_address = puller_address.replace('*', sender_ip)
         self._subscribe_address = publisher_address.replace('*', sender_ip)
+        self._reply_address = replier_address.replace('*', sender_ip)
         self._decding_successful = True
 
     @property
@@ -102,3 +108,7 @@ class Broadcast(object):
     @property
     def subscribe_address(self):
         return self._subscribe_address
+
+    @property
+    def reply_address(self):
+        return self._reply_address
