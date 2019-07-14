@@ -26,7 +26,7 @@ class Runner(object):
             devices,
             push_address=None,
             subscribe_address=None,
-            reply_port=None):
+            reply_address=None):
         self._devices = devices
         if ((push_address is None) or (subscribe_address is None)):
             broadcast = Broadcast()
@@ -75,7 +75,7 @@ class Runner(object):
         self.start()
         k = 0
         while not self._abort:
-            if (0 == k % 10000):
+            if (0 == k % 100000):
                 print(k)
             k += 1
             for device in self._devices:
@@ -106,7 +106,7 @@ class Runner(object):
         message_wrapper = self._receive()
         if (message_wrapper is None):
             return
-        LOGGER.debug(self._state + " | " + str(message_wrapper))
+        LOGGER.debug("[process]" +  self._state + " | " + str(message_wrapper))
         if (("Pong" == message_wrapper.message_type) and
                 (self._routing_id == message_wrapper.recipient)):
             self._decode_pong(message_wrapper)
@@ -179,6 +179,7 @@ class Runner(object):
         self._robot = message.robot
         self._team = message.team
         if (self._routing_id != new_routing_id):
+            LOGGER.debug("update routing id to '" + new_routing_id + "'")
             # get rid of subscription to temporary routing id
             self._subscribe_socket.setsockopt(zmq.UNSUBSCRIBE, self._routing_id)
             self._routing_id = new_routing_id
@@ -187,6 +188,7 @@ class Runner(object):
             # also listen to messages for all clients
             self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, "all_clients")
         if (message.game_state):
+            LOGGER.debug("decode game state")
             self._check_start_game(message.game_state)
         elif (ready):
             self._state = Runner.STATE_WAITING_GAME_START
@@ -195,8 +197,8 @@ class Runner(object):
 
     def _hello_and_reply(self, ready):
         hello = self._build_hello(ready)
-        print("send hello: " + repr(hello))
-        LOGGER.info("send hello: " + repr(hello))
+        # print("send hello: " + repr(hello))
+        LOGGER.info("send hello (ready=" + str(ready) + "): " + repr(hello))
         self._reply_socket.send(hello)
         reply = self._reply_socket.recv()
         message_wrapper = MessageWrapper(reply)
@@ -221,6 +223,7 @@ class Runner(object):
             self._state = Runner.STATE_WAITING_GAME_START
 
     def _decode_game_state_init(self, message_wrapper):
+        LOGGER.debug("_decode_game_state_init message is " + message_wrapper.message_type)
         if ("GameState" == message_wrapper.message_type):
             message = pb_server_game.GameState()
             message.ParseFromString(message_wrapper.payload)
