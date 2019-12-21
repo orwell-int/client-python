@@ -8,7 +8,8 @@ import orwell.messages.controller_pb2 as pb_controller
 import orwell.messages.server_game_pb2 as pb_server_game
 import orwell.messages.robot_pb2 as pb_robot
 
-from orwell.client.broadcast import Broadcast
+from orwell_common.broadcast import Broadcast
+from orwell_common.broadcast import ServerGameDecoder
 from orwell.client.message_wrapper import MessageWrapper
 
 NAME = "client"
@@ -26,10 +27,10 @@ class Runner(object):
             devices,
             push_address=None,
             subscribe_address=None,
-            reply_port=None):
+            reply_address=None):
         self._devices = devices
         if ((push_address is None) or (subscribe_address is None)):
-            broadcast = Broadcast()
+            broadcast = Broadcast(ServerGameDecoder())
             LOGGER.info(
                     broadcast.push_address +
                     " / " + broadcast.subscribe_address +
@@ -53,7 +54,8 @@ class Runner(object):
         self._reply_socket.connect(self._reply_address)
         self._routing_id = "temporary_id_" + str(random.randint(0, 32768))
         # at first we are only interested to messages specific to this client
-        self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, self._routing_id)
+        self._subscribe_socket.setsockopt_string(
+            zmq.SUBSCRIBE, self._routing_id)
         self._robot = None
         self._team = None
         self._abort = False
@@ -83,7 +85,8 @@ class Runner(object):
 
                 if (Runner.STATE_GAME_RUNNING == self._state):
                     if (device.has_new_values):
-                        msg = device.build_input().get_message(self._routing_id)
+                        msg = device.build_input().get_message(
+                            self._routing_id)
                         self._push_socket.send(msg)
                 if (not self._ping):
                     if (device.read_ping()):
@@ -98,7 +101,9 @@ class Runner(object):
         timestamp = int(round(time.time() * 1000))
         timing_event.timestamp = timestamp
         payload = pb_ping.SerializeToString()
-        message = self._routing_id + ' Ping ' + payload
+        destination = self._routing_id.encode("utf8")
+        message_type = "Ping".encode("utf8")
+        message = b" ".join((destination, message_type,  payload))
         LOGGER.info("message sent: " + repr(message))
         self._push_socket.send(message)
 
@@ -134,7 +139,10 @@ class Runner(object):
         pb_message.name = name
         pb_message.ready = ready
         payload = pb_message.SerializeToString()
-        return self._routing_id + ' Hello ' + payload
+        destination = self._routing_id.encode("utf8")
+        message_type = "Hello".encode("utf8")
+        message = b" ".join((destination, message_type,  payload))
+        return message
 
     def _decode_pong(self, message_wrapper):
         LOGGER.debug("_decode_pong")
@@ -159,14 +167,14 @@ class Runner(object):
 
     def _decode_hello_reply(self, message_wrapper, ready):
         LOGGER.debug("_decode_hello_reply " +
-                      str(message_wrapper.message_type))
+                     str(message_wrapper.message_type))
         if ("Welcome" == message_wrapper.message_type):
             self._handle_welcome(message_wrapper.payload, ready)
         elif ("Goodbye" == message_wrapper.message_type):
             self._handle_goodbye(message_wrapper.payload)
         else:
             LOGGER.debug("Wrong message type: " +
-                          message_wrapper.message_type)
+                         message_wrapper.message_type)
 
     def _handle_welcome(self, payload, ready):
         message = pb_server_game.Welcome()
@@ -180,12 +188,15 @@ class Runner(object):
         self._team = message.team
         if (self._routing_id != new_routing_id):
             # get rid of subscription to temporary routing id
-            self._subscribe_socket.setsockopt(zmq.UNSUBSCRIBE, self._routing_id)
+            self._subscribe_socket.setsockopt_string(
+                zmq.UNSUBSCRIBE, self._routing_id)
             self._routing_id = new_routing_id
             # and replace with subscription to given id
-            self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, self._routing_id)
+            self._subscribe_socket.setsockopt_string(
+                zmq.SUBSCRIBE, self._routing_id)
             # also listen to messages for all clients
-            self._subscribe_socket.setsockopt(zmq.SUBSCRIBE, "all_clients")
+            self._subscribe_socket.setsockopt_string(
+                zmq.SUBSCRIBE, "all_clients")
         if (message.game_state):
             self._check_start_game(message.game_state)
         elif (ready):
@@ -202,14 +213,13 @@ class Runner(object):
         message_wrapper = MessageWrapper(reply)
         self._decode_hello_reply(message_wrapper, ready)
 
-
     def _configure(self, game_state):
         LOGGER.info("playing ? " + str(game_state.playing))
         LOGGER.info("time left: " + str(game_state.seconds))
         # self._update_running(game_state.playing)
         for team in game_state.teams:
             LOGGER.info(team.name + " (" + str(team.num_players) +
-                         ") -> " + str(team.score))
+                        ") -> " + str(team.score))
         # let's assume we configure the different visualisations now
         self._hello_and_reply(True)
 
@@ -237,7 +247,7 @@ class Runner(object):
             message = pb_server_game.GameState()
             message.ParseFromString(message_wrapper.payload)
             self._update_visualisations(message)
-            if (not game_state.running):
+            if (not message.running):
                 self._state = Runner.STATE_WAITING_GAME_START
 
     def _update_visualisations(self, game_state):
@@ -262,15 +272,8 @@ class Runner(object):
             LOGGER.debug("message sent: " + repr(message))
             self._push_socket.send(message)
             if (joystick.ping or force_ping):
-                pb_ping = pb_controller.Ping()
-                timing_event = pb_ping.timing.add()
-                timing_event.logger = NAME
-                timestamp = int(round(time.time() * 1000))
-                timing_event.timestamp = timestamp
-                payload = pb_ping.SerializeToString()
-                message = self._routing_id + ' Ping ' + payload
-                LOGGER.info("message sent: " + repr(message))
-                self._push_socket.send(message)
+                self._send_ping()
+
 
 def configure_logging(verbose):
     global LOGGER

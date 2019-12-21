@@ -1,8 +1,8 @@
 class MessageWrapper(object):
     def __init__(self, message):
-        recipient, message_type, payload = message.split(' ', 2)
-        self._recipient = recipient
-        self._message_type = message_type
+        recipient, message_type, payload = message.split(b' ', 2)
+        self._recipient = recipient.decode("utf8")
+        self._message_type = message_type.decode("utf8")
         self._payload = payload
 
     @property
