@@ -28,16 +28,21 @@ class Runner(object):
             push_address=None,
             subscribe_address=None,
             reply_address=None):
+        LOGGER.debug("Runner::__init__")
         self._devices = devices
         if ((push_address is None) or (subscribe_address is None)):
+            LOGGER.info("Prepare broadcasting")
             broadcast = Broadcast(ServerGameDecoder())
-            LOGGER.info(
-                    broadcast.push_address +
-                    " / " + broadcast.subscribe_address +
-                    " / " + broadcast.reply_address)
-            self._push_address = broadcast.push_address
-            self._subscribe_address = broadcast.subscribe_address
-            self._reply_address = broadcast.reply_address
+            broadcast.send_all_broadcast_messages()
+            decoder = broadcast.decoder
+            LOGGER.info(decoder)
+            # LOGGER.info(
+                    # decoder.push_address +
+                    # " / " + decoder.subscribe_address +
+                    # " / " + decoder.reply_address)
+            self._push_address = decoder.push_address
+            self._subscribe_address = decoder.subscribe_address
+            self._reply_address = decoder.reply_address
         else:
             self._push_address = push_address
             self._subscribe_address = subscribe_address
@@ -289,3 +294,4 @@ def configure_logging(verbose):
         LOGGER.setLevel(logging.DEBUG)
     else:
         LOGGER.setLevel(logging.INFO)
+    LOGGER.debug("runner.configure_logging -- done")

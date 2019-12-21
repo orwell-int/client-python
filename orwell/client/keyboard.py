@@ -1,6 +1,4 @@
 from __future__ import division
-import math
-from enum import Enum
 import logging
 
 from pynput import keyboard
@@ -9,8 +7,12 @@ from orwell.client.device import Device
 from orwell.client.input import Input
 
 
+LOGGER = None
+
+
 class KeyboardThread(object):
     def __init__(self):
+        LOGGER.debug("KeyboardThread::__init__")
         self._left = False
         self._right = False
         self._enter = False
@@ -18,8 +20,8 @@ class KeyboardThread(object):
         self._p = False
         # Collect events until released
         with keyboard.Listener(
-                on_press=self.on_press,
-                on_release=self.on_release) as listener:
+                on_press=lambda x: self.on_press(x),
+                on_release=lambda x: self.on_release(x)) as listener:
             listener.join()
 
     @property
@@ -42,7 +44,8 @@ class KeyboardThread(object):
     def p(self):
         return self._p
 
-    def on_press(key):
+    def on_press(self, key):
+        LOGGER.debug("on_press({})".format(key))
         try:
             if (keyboard.Key.left == key):
                 self._left = True
@@ -57,7 +60,8 @@ class KeyboardThread(object):
         except AttributeError:
             print('special key {0} pressed'.format(key))
 
-    def on_release(key):
+    def on_release(self, key):
+        LOGGER.debug("on_release({})".format(key))
         try:
             if (keyboard.Key.left == key):
                 self._left = False
@@ -76,6 +80,7 @@ class KeyboardThread(object):
 # No test yet
 class Keyboard(Device):
     def __init__(self):
+        LOGGER.debug("Keyboard::__init__")
         self._left = False
         self._right = False
         self._fire_weapon1 = False
@@ -125,13 +130,16 @@ class Keyboard(Device):
 
 
 def configure_logging(verbose):
-    logger = logging.getLogger(__name__)
+    print("keyboard.configure_logging")
+    global LOGGER
+    LOGGER = logging.getLogger(__name__)
     handler = logging.StreamHandler()
     formatter = logging.Formatter(
             '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    LOGGER.addHandler(handler)
     if (verbose):
-        logger.setLevel(logging.DEBUG)
+        LOGGER.setLevel(logging.DEBUG)
     else:
-        logger.setLevel(logging.INFO)
+        LOGGER.setLevel(logging.INFO)
+    LOGGER.debug("keyboard.configure_logging -- done")
