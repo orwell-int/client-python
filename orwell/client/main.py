@@ -13,6 +13,7 @@ from orwell.client.runner import Runner
 
 RUNNER = None
 LOGGER = None
+KEYBOARD = None
 
 
 def parse():
@@ -106,7 +107,9 @@ def main():
         LOGGER.debug("Joystick NOT enabled")
         from orwell.client import keyboard
         keyboard.configure_logging(arguments.verbose)
-        devices.append(keyboard.Keyboard())
+        global KEYBOARD
+        KEYBOARD = keyboard.Keyboard()
+        devices.append(KEYBOARD)
         LOGGER.debug("About to build runner")
         runner = build_runner(arguments, devices)
         LOGGER.debug("About to start runner")
@@ -119,6 +122,9 @@ def signal_handler(signal, frame):
     LOGGER.info('You pressed Ctrl+C!')
     if (RUNNER):
         RUNNER.destroy()
+    global KEYBOARD
+    if KEYBOARD:
+        KEYBOARD.stop()
     # let's hope it does nothing wrong if not initialised
     pygame.quit()
     sys.exit(0)

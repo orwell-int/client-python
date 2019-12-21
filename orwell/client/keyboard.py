@@ -19,10 +19,13 @@ class KeyboardThread(object):
         self._space = False
         self._p = False
         # Collect events until released
-        with keyboard.Listener(
-                on_press=lambda x: self.on_press(x),
-                on_release=lambda x: self.on_release(x)) as listener:
-            listener.join()
+        self._listener = keyboard.Listener(
+            on_press=lambda x: self.on_press(x),
+            on_release=lambda x: self.on_release(x))
+        self._listener.start()
+
+    def stop(self):
+        self._listener.stop()
 
     @property
     def left(self):
