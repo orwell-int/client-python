@@ -90,10 +90,10 @@ class Broadcast(object):
         publisher_address = to_str(self._data[end_puller + 2:end_publisher])
         # print("publisher_address = " + publisher_address)
         assert(self._data[end_publisher] == '\xa2')
-        replier_size = to_char(self._data[end_puller + 1])
+        replier_size = to_char(self._data[end_publisher + 1])
         # print("replier_size = " + str(replier_size))
-        end_replier = end_puller + 2 + replier_size
-        replier_address = to_str(self._data[end_puller + 2:end_replier])
+        end_replier = end_publisher + 2 + replier_size
+        replier_address = to_str(self._data[end_publisher + 2:end_replier])
         # print("replier_address = " + replier_address)
         sender_ip, _ = self._sender
         self._push_address = puller_address.replace('*', sender_ip)
